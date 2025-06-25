@@ -41,6 +41,7 @@ dependencies:
   flutter_map:
   latlong2:
   dio:
+  pretty_dio_logger:
 
 dev_dependencies:
   flutter_test:

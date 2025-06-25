@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_maps/utils/location_services.dart';
 import 'package:flutter_maps/utils/maps_services.dart';
+import 'package:flutter_maps/utils/models/PlacesAutoCompleteModel.dart';
+import 'package:flutter_maps/widgets/custom_list_view.dart';
+import 'package:flutter_maps/widgets/custom_text_field.dart';
 import 'package:latlong2/latlong.dart';
 
 class FlutterMapScreen extends StatefulWidget {
@@ -19,13 +22,19 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
   late MapsApiServices mapsApiServices;
   List<Marker> markers = [];
   late LatLng currentLocation;
+  late SearchController searchController;
   List<LatLng> trackRoutes = [];
+  List<Features> places = [];
+  late TextEditingController textEditingController;
   bool isLoading = false;
 
   @override
   void initState() {
     locationService = LocationService();
     mapsApiServices = MapsApiServices();
+    searchController = SearchController();
+    textEditingController = TextEditingController();
+    getAutoCompletePlaces();
     mapController = MapController();
     updateMyLocation();
     setState(() {});
@@ -33,31 +42,54 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
   }
 
   @override
+  void dispose() {
+    textEditingController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: FlutterMap(
-        mapController: mapController,
-        options: MapOptions(
-          initialCenter: const LatLng(30.552435364641454, 31.006551321191935),
-          initialZoom: 15,
-          onTap: (tapPosition, point) => addDestinationMarker(point),
-        ),
+      body: Stack(
         children: [
-          TileLayer(
-            // Bring your own tiles
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            // For demonstration only
-            userAgentPackageName:
-                'com.example.flutter_map', // Add your app identifier
-            // And many more recommended properties!
+          FlutterMap(
+            mapController: mapController,
+            options: MapOptions(
+              initialCenter:
+                  const LatLng(30.552435364641454, 31.006551321191935),
+              initialZoom: 15,
+              onTap: (tapPosition, point) => addDestinationMarker(point),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.flutter_map',
+              ),
+              MarkerLayer(markers: markers),
+              if (isLoading)
+                const Center(child: CircularProgressIndicator())
+              else if (trackRoutes.isNotEmpty)
+                PolylineLayer(polylines: [
+                  Polyline(
+                      points: trackRoutes, color: Colors.red, strokeWidth: 5.0)
+                ])
+            ],
           ),
-          MarkerLayer(markers: markers),
-          if (isLoading)
-            const Center(child: CircularProgressIndicator())
-          else if (trackRoutes.isNotEmpty)
-            PolylineLayer(polylines: [
-              Polyline(points: trackRoutes, color: Colors.red, strokeWidth: 5.0)
-            ])
+          Positioned(
+              top: 50,
+              right: 20,
+              left: 20,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  CustomTextField(
+                    textEditingController: textEditingController,
+                  ),
+                  CustomListView(
+                    places: places,
+                  )
+                ],
+              ))
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -67,6 +99,19 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
         child: const Icon(Icons.my_location),
       ),
     );
+  }
+
+  getAutoCompletePlaces() {
+    textEditingController.addListener(() async {
+      if (textEditingController.text.isNotEmpty) {
+        var result =
+            await mapsApiServices.getPlaces(textEditingController.text);
+        places.clear();
+        setState(() {
+          places.addAll(result);
+        });
+      }
+    });
   }
 
   updateMyLocation() async {
@@ -89,7 +134,12 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
 
   setMyLocationMarker(LatLng latLng) {
     setState(() {
-      markers.add(Marker(point: latLng, child: const Icon(Icons.my_location)));
+      markers.add(Marker(
+          point: latLng,
+          child: const Icon(
+            Icons.my_location,
+            size: 35,
+          )));
     });
   }
 
@@ -107,7 +157,8 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
           point: point,
           child: const Icon(
             Icons.location_on,
-            color: Colors.orange,
+            color: Colors.red,
+            size: 35,
           )));
     });
     setState(() {
