@@ -188,10 +188,10 @@ class Geometry {
   Geometry.fromJson(dynamic json) {
     type = json['type'];
     coordinates =
-        json['coordinates'] != null ? json['coordinates'].cast<int>() : [];
+        json['coordinates'] != null ? json['coordinates'].cast<double>() : [];
   }
   String? type;
-  List<int>? coordinates;
+  List<double>? coordinates;
 
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{};

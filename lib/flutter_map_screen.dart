@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
@@ -27,6 +28,9 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
   List<Features> places = [];
   late TextEditingController textEditingController;
   bool isLoading = false;
+  bool isPlacesLoading = false;
+  Timer? debounce;
+  bool ignoreListener = false;
 
   @override
   void initState() {
@@ -44,6 +48,7 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
   @override
   void dispose() {
     textEditingController.dispose();
+    debounce!.cancel();
     super.dispose();
   }
 
@@ -57,12 +62,13 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
             options: MapOptions(
               initialCenter:
                   const LatLng(30.552435364641454, 31.006551321191935),
-              initialZoom: 15,
+              initialZoom: 10,
               onTap: (tapPosition, point) => addDestinationMarker(point),
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate:
+                    'https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.flutter_map',
               ),
               MarkerLayer(markers: markers),
@@ -72,7 +78,7 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
                 PolylineLayer(polylines: [
                   Polyline(
                       points: trackRoutes, color: Colors.red, strokeWidth: 5.0)
-                ])
+                ]),
             ],
           ),
           Positioned(
@@ -85,32 +91,69 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
                   CustomTextField(
                     textEditingController: textEditingController,
                   ),
-                  CustomListView(
-                    places: places,
-                  )
+                  textEditingController.text.isNotEmpty
+                      ? isPlacesLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(),
+                            )
+                          : CustomListView(
+                              onRouteUpdate: (newRoutes, latLng, listenerState,
+                                  loadingState) {
+                                setState(() {
+                                  trackRoutes = newRoutes;
+                                  isLoading = loadingState;
+                                  markers = markers
+                                      .where((m) => m.point == currentLocation)
+                                      .toList();
+                                  markers.add(Marker(
+                                    point: latLng,
+                                    child: const Icon(Icons.location_on,
+                                        color: Colors.red, size: 35),
+                                  ));
+                                  ignoreListener = listenerState;
+                                });
+                              },
+                              places: places,
+                              mapsApiServices: mapsApiServices,
+                              currentLocation: currentLocation,
+                              textEditingController: textEditingController,
+                            )
+                      : const SizedBox()
                 ],
               ))
         ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          mapController.move(currentLocation, 15);
+          mapController.move(currentLocation, 10);
         },
         child: const Icon(Icons.my_location),
       ),
     );
   }
 
-  getAutoCompletePlaces() {
-    textEditingController.addListener(() async {
-      if (textEditingController.text.isNotEmpty) {
-        var result =
-            await mapsApiServices.getPlaces(textEditingController.text);
-        places.clear();
-        setState(() {
-          places.addAll(result);
-        });
-      }
+  void getAutoCompletePlaces() {
+    textEditingController.addListener(() {
+      if (ignoreListener) return;
+      if (debounce?.isActive ?? false) debounce!.cancel();
+
+      debounce = Timer(const Duration(milliseconds: 900), () async {
+        if (textEditingController.text.isNotEmpty) {
+          setState(() {
+            isPlacesLoading = true;
+          });
+          var result =
+              await mapsApiServices.getPlaces(textEditingController.text);
+          setState(() {
+            places = result;
+            isPlacesLoading = false;
+          });
+        } else {
+          setState(() {
+            places.clear();
+          });
+        }
+      });
     });
   }
 
@@ -148,11 +191,12 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
   }
 
   addDestinationMarker(LatLng point) async {
+    print("Tapped on map at $point");
+
     setState(() {
       markers =
           markers.where((marker) => marker.point == currentLocation).toList();
-    });
-    setState(() {
+
       markers.add(Marker(
           point: point,
           child: const Icon(
@@ -160,13 +204,12 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
             color: Colors.red,
             size: 35,
           )));
-    });
-    setState(() {
+
       isLoading = true;
     });
-    final newRoutes = await mapsApiServices.getRoute(currentLocation, point);
+    final newRouts = await mapsApiServices.getRoute(currentLocation, point);
     setState(() {
-      trackRoutes = newRoutes;
+      trackRoutes = newRouts;
       log("trackroutes=>>${trackRoutes.length}");
       isLoading = false;
     });

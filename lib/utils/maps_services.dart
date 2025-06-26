@@ -11,8 +11,6 @@ import 'constants.dart';
 class MapsApiServices {
   Dio dio = Dio();
   MapsApiServices() {
-    dio.interceptors.add(PrettyDioLogger());
-
 // customization
     dio.interceptors.add(PrettyDioLogger(
         requestHeader: true,
@@ -78,7 +76,7 @@ class MapsApiServices {
     try {
       // var encodedQuery = Uri.encodeComponent(query);
       var response = await dio.get(
-          "https://api.openrouteservice.org/geocode/search?api_key=$apiKey&text=$query");
+          "https://api.openrouteservice.org/geocode/autocomplete?api_key=$apiKey&text=$query");
       if (response.statusCode == 200) {
         var data = PlacesAutoCompleteModel.fromJson(response.data);
         List<Features>? places = data.features;
