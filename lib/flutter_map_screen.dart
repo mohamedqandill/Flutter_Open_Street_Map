@@ -31,6 +31,8 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
   bool isPlacesLoading = false;
   Timer? debounce;
   bool ignoreListener = false;
+  bool isFocusedState = false;
+  late FocusNode searchFocusState;
 
   @override
   void initState() {
@@ -38,7 +40,9 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
     mapsApiServices = MapsApiServices();
     searchController = SearchController();
     textEditingController = TextEditingController();
+    searchFocusState = FocusNode();
     getAutoCompletePlaces();
+
     mapController = MapController();
     updateMyLocation();
     setState(() {});
@@ -61,14 +65,14 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
             mapController: mapController,
             options: MapOptions(
               initialCenter:
-                  const LatLng(30.552435364641454, 31.006551321191935),
-              initialZoom: 10,
+                  const LatLng(27.892458365561065, 26.725024118954433),
+              initialZoom: 5,
               onTap: (tapPosition, point) => addDestinationMarker(point),
             ),
             children: [
               TileLayer(
-                urlTemplate:
-                    'https://a.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                subdomains: ['a', 'b', 'c', 'd'],
                 userAgentPackageName: 'com.example.flutter_map',
               ),
               MarkerLayer(markers: markers),
@@ -77,7 +81,7 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
               else if (trackRoutes.isNotEmpty)
                 PolylineLayer(polylines: [
                   Polyline(
-                      points: trackRoutes, color: Colors.red, strokeWidth: 5.0)
+                      points: trackRoutes, color: Colors.blue, strokeWidth: 8.0)
                 ]),
             ],
           ),
@@ -89,14 +93,19 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   CustomTextField(
+                    isFocused: (isFocused) {
+                      isFocusedState = isFocused;
+                      setState(() {});
+                    },
+                    searchFocused: searchFocusState,
                     textEditingController: textEditingController,
                   ),
-                  textEditingController.text.isNotEmpty
-                      ? isPlacesLoading
-                          ? const Center(
-                              child: CircularProgressIndicator(),
-                            )
-                          : CustomListView(
+                  isPlacesLoading
+                      ? const Center(
+                          child: CircularProgressIndicator(),
+                        )
+                      : isFocusedState
+                          ? CustomListView(
                               onRouteUpdate: (newRoutes, latLng, listenerState,
                                   loadingState) {
                                 setState(() {
@@ -118,7 +127,7 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
                               currentLocation: currentLocation,
                               textEditingController: textEditingController,
                             )
-                      : const SizedBox()
+                          : const SizedBox()
                 ],
               ))
         ],
@@ -182,6 +191,7 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
           child: const Icon(
             Icons.my_location,
             size: 35,
+            color: Colors.blue,
           )));
     });
   }
@@ -191,8 +201,6 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
   }
 
   addDestinationMarker(LatLng point) async {
-    print("Tapped on map at $point");
-
     setState(() {
       markers =
           markers.where((marker) => marker.point == currentLocation).toList();

@@ -42,6 +42,9 @@ dependencies:
   latlong2:
   dio:
   pretty_dio_logger:
+  path:
+  hive:
+  path_provider:
 
 dev_dependencies:
   flutter_test:

@@ -1,27 +1,56 @@
 import 'package:flutter/material.dart';
 
-class CustomTextField extends StatelessWidget {
-  const CustomTextField({super.key, required this.textEditingController});
+class CustomTextField extends StatefulWidget {
+  const CustomTextField(
+      {super.key,
+      required this.textEditingController,
+      required this.searchFocused,
+      required this.isFocused});
+
   final TextEditingController textEditingController;
+  final FocusNode searchFocused;
+  final Function(bool isFocused) isFocused;
+
+  @override
+  State<CustomTextField> createState() => _CustomTextFieldState();
+}
+
+class _CustomTextFieldState extends State<CustomTextField> {
+  @override
+  void initState() {
+    widget.searchFocused.addListener(
+      () {
+        if (widget.searchFocused.hasFocus) {
+          print("Search field is focused (opened/tapped)");
+          widget.isFocused(true);
+        } else {
+          print("Search field lost focus (closed/unfocused)");
+          widget.isFocused(false);
+        }
+      },
+    );
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 150,
-      height: 50,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(50),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.only(left: 15),
-        child: TextFormField(
-          controller: textEditingController,
-          decoration: const InputDecoration(
-            hintText: "Search...",
-            border: InputBorder.none,
-          ),
-        ),
+    return TextFormField(
+      focusNode: widget.searchFocused,
+      controller: widget.textEditingController,
+      decoration: const InputDecoration(
+        filled: true,
+        fillColor: Colors.white,
+        enabledBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.white),
+            borderRadius: BorderRadius.all(Radius.circular(50))),
+        focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.white),
+            borderRadius: BorderRadius.all(Radius.circular(50))),
+        disabledBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.white),
+            borderRadius: BorderRadius.all(Radius.circular(50))),
+        hintText: "Search...",
+        border: InputBorder.none,
       ),
     );
   }
