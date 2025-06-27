@@ -11,7 +11,11 @@ import 'constants.dart';
 class MapsApiServices {
   Dio dio = Dio();
   MapsApiServices() {
-// customization
+    dio.options = BaseOptions(
+      connectTimeout: const Duration(minutes: 1),
+      receiveTimeout: const Duration(minutes: 1),
+      sendTimeout: const Duration(minutes: 1),
+    );
     dio.interceptors.add(PrettyDioLogger(
         requestHeader: true,
         requestBody: true,
@@ -31,27 +35,42 @@ class MapsApiServices {
         }));
   }
 
-  Future<List<LatLng>> getRoute(
+  Future<Map<String, dynamic>> getRoute(
       LatLng currentLocation, LatLng destination) async {
     try {
       List<LatLng> trackRoutes = [];
+      List<dynamic> segments = [];
 
       final startCoord =
           "${currentLocation.longitude},${currentLocation.latitude}";
       final endCoord = "${destination.longitude},${destination.latitude}";
-      print(currentLocation.latitude);
       var response = await dio.get(
           "https://api.openrouteservice.org/v2/directions/driving-car?api_key=$apiKey&start=$startCoord&end=$endCoord");
+
       if (response.statusCode == 200) {
-        trackRoutes = _parseRoute(response.data);
+        final data = response.data;
+        trackRoutes = _parseRoute(data);
+        segments = _parseSegments(data);
       } else {
         log("Unexpected status: ${response.statusCode}");
       }
-      return trackRoutes;
+
+      return {
+        'routePoints': trackRoutes,
+        'segments': segments,
+      };
     } catch (e) {
       log("Error==>${e.toString()}");
       rethrow;
     }
+  }
+
+  List<dynamic> _parseSegments(Map<String, dynamic> json) {
+    final features = json['features'] as List;
+    if (features.isEmpty) return [];
+
+    final segments = features[0]['properties']['segments'];
+    return segments ?? [];
   }
 
   List<LatLng> _parseRoute(Map<String, dynamic> json) {

@@ -26,6 +26,7 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
   late SearchController searchController;
   List<LatLng> trackRoutes = [];
   List<Features> places = [];
+  List segments = [];
   late TextEditingController textEditingController;
   bool isLoading = false;
   bool isPlacesLoading = false;
@@ -58,6 +59,8 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    var width = MediaQuery.sizeOf(context).width;
+    var height = MediaQuery.sizeOf(context).height;
     return Scaffold(
       body: Stack(
         children: [
@@ -81,31 +84,48 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
               else if (trackRoutes.isNotEmpty)
                 PolylineLayer(polylines: [
                   Polyline(
-                      points: trackRoutes, color: Colors.blue, strokeWidth: 8.0)
+                    points: trackRoutes,
+                    color: Colors.blue,
+                    strokeWidth: width * 0.02,
+                  )
                 ]),
+              if (segments.isNotEmpty && trackRoutes.length >= 2)
+                Transform.translate(
+                  offset: const Offset(50, 0),
+                  child: MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: getMidPoint(trackRoutes),
+                        width: 80,
+                        height: 30,
+                        child: _buildDurationBubble(segments),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
           Positioned(
-              top: 50,
-              right: 20,
-              left: 20,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  CustomTextField(
-                    isFocused: (isFocused) {
-                      isFocusedState = isFocused;
-                      setState(() {});
-                    },
-                    searchFocused: searchFocusState,
-                    textEditingController: textEditingController,
-                  ),
-                  isPlacesLoading
-                      ? const Center(
-                          child: CircularProgressIndicator(),
-                        )
-                      : isFocusedState
-                          ? CustomListView(
+            top: height * 0.06,
+            right: width * 0.05,
+            left: width * 0.05,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CustomTextField(
+                  isFocused: (isFocused) {
+                    isFocusedState = isFocused;
+                    setState(() {});
+                  },
+                  searchFocused: searchFocusState,
+                  textEditingController: textEditingController,
+                ),
+                isPlacesLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : isFocusedState
+                        ? Padding(
+                            padding: EdgeInsets.only(top: height * 0.01),
+                            child: CustomListView(
                               onRouteUpdate: (newRoutes, latLng, listenerState,
                                   loadingState) {
                                 setState(() {
@@ -116,8 +136,11 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
                                       .toList();
                                   markers.add(Marker(
                                     point: latLng,
-                                    child: const Icon(Icons.location_on,
-                                        color: Colors.red, size: 35),
+                                    child: Icon(
+                                      Icons.location_on,
+                                      color: Colors.red,
+                                      size: width * 0.08,
+                                    ),
                                   ));
                                   ignoreListener = listenerState;
                                 });
@@ -126,19 +149,35 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
                               mapsApiServices: mapsApiServices,
                               currentLocation: currentLocation,
                               textEditingController: textEditingController,
-                            )
-                          : const SizedBox()
-                ],
-              ))
+                            ),
+                          )
+                        : const SizedBox()
+              ],
+            ),
+          )
         ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           mapController.move(currentLocation, 10);
         },
-        child: const Icon(Icons.my_location),
+        child: Icon(Icons.my_location, size: width * 0.07),
       ),
     );
+  }
+
+  setMyLocationMarker(LatLng latLng) {
+    var width = MediaQuery.of(context).size.width;
+    setState(() {
+      markers.add(Marker(
+        point: latLng,
+        child: Icon(
+          Icons.my_location,
+          size: width * 0.09,
+          color: Colors.blue,
+        ),
+      ));
+    });
   }
 
   void getAutoCompletePlaces() {
@@ -151,10 +190,15 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
           setState(() {
             isPlacesLoading = true;
           });
-          var result =
-              await mapsApiServices.getPlaces(textEditingController.text);
+          try {
+            places =
+                await mapsApiServices.getPlaces(textEditingController.text);
+          } catch (e) {
+            setState(() {
+              isPlacesLoading = false;
+            });
+          }
           setState(() {
-            places = result;
             isPlacesLoading = false;
           });
         } else {
@@ -184,42 +228,80 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
     }
   }
 
-  setMyLocationMarker(LatLng latLng) {
-    setState(() {
-      markers.add(Marker(
-          point: latLng,
-          child: const Icon(
-            Icons.my_location,
-            size: 35,
-            color: Colors.blue,
-          )));
-    });
-  }
-
   updateMyCamera(LatLng latLng) {
     mapController.move(latLng, 15);
   }
 
   addDestinationMarker(LatLng point) async {
+    var width = MediaQuery.of(context).size.width;
+
     setState(() {
       markers =
           markers.where((marker) => marker.point == currentLocation).toList();
 
       markers.add(Marker(
           point: point,
-          child: const Icon(
+          child: Icon(
             Icons.location_on,
             color: Colors.red,
-            size: 35,
+            size: width * 0.09,
           )));
 
       isLoading = true;
     });
-    final newRouts = await mapsApiServices.getRoute(currentLocation, point);
+
+    try {
+      var result = await mapsApiServices.getRoute(currentLocation, point);
+      trackRoutes = result['routePoints'];
+      segments = result['segments'];
+      setState(() {});
+    } catch (e) {
+      setState(() {
+        isLoading = false;
+      });
+    }
     setState(() {
-      trackRoutes = newRouts;
       log("trackroutes=>>${trackRoutes.length}");
       isLoading = false;
     });
   }
+
+  LatLng getMidPoint(List<LatLng> points) {
+    final midIndex = (points.length / 2).floor();
+    return points[midIndex];
+  }
+}
+
+Widget _buildDurationBubble(List segments) {
+  if (segments.isEmpty) return const SizedBox();
+
+  final durationSeconds = segments[0]['duration'] as num;
+  final duration = Duration(seconds: durationSeconds.round());
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+
+  final timeText = hours > 0 ? "$hours h ${minutes} min" : "$minutes min";
+
+  return Container(
+    padding: const EdgeInsets.only(left: 10),
+    decoration: BoxDecoration(
+      color: Colors.blue,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.2),
+          blurRadius: 4,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Text(
+      timeText,
+      style: const TextStyle(
+        color: Colors.black,
+        fontWeight: FontWeight.bold,
+        fontSize: 20,
+      ),
+    ),
+  );
 }

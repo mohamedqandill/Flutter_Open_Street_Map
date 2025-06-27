@@ -35,6 +35,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
   @override
   Widget build(BuildContext context) {
     return TextFormField(
+      style: const TextStyle(fontWeight: FontWeight.w400, fontSize: 22),
       focusNode: widget.searchFocused,
       controller: widget.textEditingController,
       decoration: const InputDecoration(
@@ -49,7 +50,12 @@ class _CustomTextFieldState extends State<CustomTextField> {
         disabledBorder: OutlineInputBorder(
             borderSide: BorderSide(color: Colors.white),
             borderRadius: BorderRadius.all(Radius.circular(50))),
-        hintText: "Search...",
+        hintText: "Search Here...",
+        hintStyle: TextStyle(fontWeight: FontWeight.w400, fontSize: 17),
+        prefixIcon: Icon(
+          Icons.location_on,
+          size: 29,
+        ),
         border: InputBorder.none,
       ),
     );

@@ -44,106 +44,185 @@ class _CustomListViewState extends State<CustomListView> {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 700,
-      child: ListView.separated(
-          itemBuilder: (context, index) {
-            return InkWell(
-              onTap: () {
-                final coords = widget.textEditingController.text.isEmpty
-                    ? [0.0, 0.0]
-                    : widget.places[index].geometry!.coordinates!;
-                final savedcoords = widget.textEditingController.text.isEmpty
-                    ? savedPlaces[index].latLng
-                    : const LatLng(0, 0);
-                final lon = coords[0];
-                final lat = coords[1];
-                final latLng = LatLng(lat, lon);
-                FocusScope.of(context).unfocus();
-                if (widget.textEditingController.text.isNotEmpty) {
-                  SavedPlacesModel place = SavedPlacesModel(
-                    latLng: latLng,
-                    placeName: widget.places[index].properties?.name ?? "",
-                    placeCountry: widget.places[index].properties?.label ?? "",
-                  );
-                  savePlaceToDB(place);
-                }
+    var width = MediaQuery.sizeOf(context).width;
+    var height = MediaQuery.sizeOf(context).height;
 
-                getRoutes(
-                    index,
-                    widget.textEditingController.text.isEmpty
-                        ? savedcoords
-                        : latLng);
-                setState(() {
-                  Future.delayed(
-                    const Duration(milliseconds: 500),
-                    () {
-                      widget.textEditingController.clear();
-                    },
-                  );
-                  getAllSavedPlaces();
-                });
-              },
-              child: Container(
-                width: 150,
-                decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10)),
-                child: Padding(
-                  padding: const EdgeInsets.all(10.0),
-                  child: Row(
+    return savedPlaces.isEmpty && widget.textEditingController.text.isEmpty
+        ? const SizedBox()
+        : Container(
+            height: widget.textEditingController.text.isEmpty
+                ? height * 0.7
+                : height * 0.99,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(width * 0.025),
+            ),
+            child: widget.places.isEmpty &&
+                    widget.textEditingController.text.isNotEmpty
+                ? Center(
+                    child: Text(
+                      "No Places Found",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: width * 0.06,
+                      ),
+                    ),
+                  )
+                : Column(
                     children: [
-                      const Icon(
-                        Icons.location_on,
-                        size: 30,
-                      ),
-                      const SizedBox(
-                        width: 10,
-                      ),
+                      widget.textEditingController.text.isEmpty
+                          ? Padding(
+                              padding: EdgeInsets.only(
+                                top: height * 0.02,
+                                left: width * 0.04,
+                                right: width * 0.04,
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    "Recent",
+                                    style: TextStyle(
+                                      fontSize: width * 0.06,
+                                      color: Colors.black,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  InkWell(
+                                    onTap: () {
+                                      savedPlacesDatabase.clearSavedPlaces();
+                                      savedPlaces = [];
+                                      setState(() {});
+                                    },
+                                    child: Text(
+                                      "Clear All",
+                                      style: TextStyle(
+                                        fontSize: width * 0.05,
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                                  )
+                                ],
+                              ),
+                            )
+                          : const SizedBox(),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.textEditingController.text.isEmpty
-                                  ? savedPlaces[index].placeName
-                                  : widget.places[index].properties?.name ??
-                                      "Error",
-                              style: const TextStyle(
-                                  fontSize: 20, fontWeight: FontWeight.bold),
-                            ),
-                            Text(
-                              widget.textEditingController.text.isEmpty
-                                  ? savedPlaces[index].placeCountry
-                                  : widget.places[index].properties?.label
-                                          ?.substring(0, 12) ??
-                                      "Error",
-                              style: const TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.w300),
-                            ),
-                          ],
+                        child: ListView.separated(
+                          itemBuilder: (context, index) {
+                            return InkWell(
+                              onTap: () {
+                                final coords =
+                                    widget.textEditingController.text.isEmpty
+                                        ? [0.0, 0.0]
+                                        : widget.places[index].geometry!
+                                            .coordinates!;
+                                final savedCoords =
+                                    widget.textEditingController.text.isEmpty
+                                        ? savedPlaces[index].latLng
+                                        : const LatLng(0, 0);
+                                final lon = coords[0];
+                                final lat = coords[1];
+                                final latLng = LatLng(lat, lon);
+                                FocusScope.of(context).unfocus();
+                                if (widget
+                                    .textEditingController.text.isNotEmpty) {
+                                  SavedPlacesModel place = SavedPlacesModel(
+                                    latLng: latLng,
+                                    placeName:
+                                        widget.places[index].properties?.name ??
+                                            "",
+                                    placeCountry: widget
+                                            .places[index].properties?.label ??
+                                        "",
+                                  );
+                                  savePlaceToDB(place);
+                                }
+
+                                getRoutes(
+                                  index,
+                                  widget.textEditingController.text.isEmpty
+                                      ? savedCoords
+                                      : latLng,
+                                );
+
+                                setState(() {
+                                  Future.delayed(
+                                    const Duration(milliseconds: 500),
+                                    () {
+                                      widget.textEditingController.clear();
+                                    },
+                                  );
+                                  getAllSavedPlaces();
+                                });
+                              },
+                              child: Padding(
+                                padding: EdgeInsets.all(width * 0.025),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.location_on,
+                                      size: width * 0.075,
+                                    ),
+                                    SizedBox(width: width * 0.025),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            widget.textEditingController.text
+                                                    .isEmpty
+                                                ? savedPlaces[index].placeName
+                                                : widget.places[index]
+                                                        .properties?.name ??
+                                                    "Error",
+                                            style: TextStyle(
+                                              fontSize: width * 0.052,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          Text(
+                                            widget.textEditingController.text
+                                                    .isEmpty
+                                                ? savedPlaces[index]
+                                                    .placeCountry
+                                                : widget.places[index]
+                                                        .properties?.label ??
+                                                    "Error",
+                                            style: TextStyle(
+                                              fontSize: width * 0.045,
+                                              fontWeight: FontWeight.w300,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Icon(
+                                      Icons.arrow_circle_right_outlined,
+                                      size: width * 0.075,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                          separatorBuilder: (context, index) {
+                            return Divider(
+                              color: Colors.black,
+                              thickness: width * 0.003,
+                            );
+                          },
+                          itemCount: widget.textEditingController.text.isEmpty
+                              ? savedPlaces.length
+                              : widget.places.length,
                         ),
-                      ),
-                      const Spacer(),
-                      const Icon(
-                        Icons.arrow_circle_right_outlined,
-                        size: 30,
                       ),
                     ],
                   ),
-                ),
-              ),
-            );
-          },
-          separatorBuilder: (context, index) {
-            return const SizedBox(
-              height: 2,
-            );
-          },
-          itemCount: widget.textEditingController.text.isEmpty
-              ? savedPlaces.length
-              : widget.places.length),
-    );
+          );
   }
 
   getAllSavedPlaces() async {
@@ -153,10 +232,17 @@ class _CustomListViewState extends State<CustomListView> {
   }
 
   getRoutes(int index, LatLng latLng) async {
+    var newRoutes;
     widget.onRouteUpdate([], latLng, false, true);
-    var newRouts =
-        await widget.mapsApiServices.getRoute(widget.currentLocation, latLng);
-    widget.onRouteUpdate(newRouts, latLng, false, false);
+    try {
+      var result =
+          await widget.mapsApiServices.getRoute(widget.currentLocation, latLng);
+      newRoutes = result['routePoints'];
+    } catch (e) {
+      widget.onRouteUpdate([], latLng, false, false);
+      return;
+    }
+    widget.onRouteUpdate(newRoutes, latLng, false, false);
   }
 
   savePlaceToDB(SavedPlacesModel place) async {
