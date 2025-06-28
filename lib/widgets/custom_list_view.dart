@@ -21,7 +21,7 @@ class CustomListView extends StatefulWidget {
 
   final LatLng currentLocation;
   final Function(List<LatLng>, LatLng destination, bool listenerState,
-      bool loadingState) onRouteUpdate;
+      bool loadingState, List placeSegments) onRouteUpdate;
   final TextEditingController textEditingController;
 
   @override
@@ -32,6 +32,7 @@ class _CustomListViewState extends State<CustomListView> {
   bool isLoading = false;
   late SavedPlacesDatabase savedPlacesDatabase;
   List<SavedPlacesModel> savedPlaces = [];
+  late List segments;
   int placeId = 0;
 
   @override
@@ -233,16 +234,17 @@ class _CustomListViewState extends State<CustomListView> {
 
   getRoutes(int index, LatLng latLng) async {
     var newRoutes;
-    widget.onRouteUpdate([], latLng, false, true);
+    widget.onRouteUpdate([], latLng, false, true, []);
     try {
       var result =
           await widget.mapsApiServices.getRoute(widget.currentLocation, latLng);
       newRoutes = result['routePoints'];
+      segments = result['segments'];
     } catch (e) {
-      widget.onRouteUpdate([], latLng, false, false);
+      widget.onRouteUpdate([], latLng, false, false, []);
       return;
     }
-    widget.onRouteUpdate(newRoutes, latLng, false, false);
+    widget.onRouteUpdate(newRoutes, latLng, false, false, segments);
   }
 
   savePlaceToDB(SavedPlacesModel place) async {

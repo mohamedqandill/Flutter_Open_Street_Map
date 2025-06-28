@@ -34,6 +34,7 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
   bool ignoreListener = false;
   bool isFocusedState = false;
   late FocusNode searchFocusState;
+  Marker? myLocationMarker;
 
   @override
   void initState() {
@@ -127,10 +128,12 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
                             padding: EdgeInsets.only(top: height * 0.01),
                             child: CustomListView(
                               onRouteUpdate: (newRoutes, latLng, listenerState,
-                                  loadingState) {
+                                  loadingState, placeSegments) {
                                 setState(() {
+                                  segments = [];
                                   trackRoutes = newRoutes;
                                   isLoading = loadingState;
+                                  segments = placeSegments;
                                   markers = markers
                                       .where((m) => m.point == currentLocation)
                                       .toList();
@@ -159,25 +162,11 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          mapController.move(currentLocation, 10);
+          mapController.move(currentLocation, 8);
         },
         child: Icon(Icons.my_location, size: width * 0.07),
       ),
     );
-  }
-
-  setMyLocationMarker(LatLng latLng) {
-    var width = MediaQuery.of(context).size.width;
-    setState(() {
-      markers.add(Marker(
-        point: latLng,
-        child: Icon(
-          Icons.my_location,
-          size: width * 0.09,
-          color: Colors.blue,
-        ),
-      ));
-    });
   }
 
   void getAutoCompletePlaces() {
@@ -210,26 +199,67 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
     });
   }
 
-  updateMyLocation() async {
+  Future<void> updateMyLocation() async {
+    await locationService.checkAndRequestPermission();
     await locationService.checkAndRequestLocationService();
-    var permissionGranted = await locationService.checkAndRequestPermission();
-    if (permissionGranted) {
-      LocationService.getRealTimeLocationData(
-        (locationData) {
-          var latLng = LatLng(locationData.latitude!, locationData.longitude!);
+    bool isFirstTime = true;
 
-          currentLocation = latLng;
-          setMyLocationMarker(latLng);
-          updateMyCamera(latLng);
-        },
-      );
+    bool serviceEnabled = await locationService.isServiceEnabled();
+    if (!serviceEnabled) {
+      for (int i = 0; i < 3; i++) {
+        await Future.delayed(const Duration(seconds: 1));
+        serviceEnabled = await locationService.isServiceEnabled();
+        if (serviceEnabled) break;
+      }
+    }
+
+    if (serviceEnabled) {
+      final firstLocation = await locationService.getCurrentLocation();
+      if (firstLocation != null) {
+        currentLocation =
+            LatLng(firstLocation.latitude!, firstLocation.longitude!);
+        setMyLocationMarker(currentLocation);
+        if (isFirstTime) updateMyCamera(currentLocation);
+        isFirstTime = false;
+      }
+
+      locationService.getRealTimeLocationData((locationData) {
+        var latLng = LatLng(locationData.latitude!, locationData.longitude!);
+        currentLocation = latLng;
+        setMyLocationMarker(latLng);
+
+        if (isFirstTime) updateMyCamera(latLng);
+        isFirstTime = false;
+      });
     } else {
-      //TODO
+      log(" Location service is not enabled");
     }
   }
 
+  setMyLocationMarker(LatLng latLng) {
+    var width = MediaQuery.of(context).size.width;
+
+    Marker newMarker = Marker(
+      point: latLng,
+      child: Icon(
+        Icons.my_location,
+        size: width * 0.09,
+        color: Colors.blue,
+      ),
+    );
+
+    setState(() {
+      if (myLocationMarker != null) {
+        markers.remove(myLocationMarker);
+      }
+
+      myLocationMarker = newMarker;
+      markers.add(myLocationMarker!);
+    });
+  }
+
   updateMyCamera(LatLng latLng) {
-    mapController.move(latLng, 15);
+    mapController.move(latLng, 10);
   }
 
   addDestinationMarker(LatLng point) async {
@@ -279,8 +309,7 @@ Widget _buildDurationBubble(List segments) {
   final duration = Duration(seconds: durationSeconds.round());
   final hours = duration.inHours;
   final minutes = duration.inMinutes.remainder(60);
-
-  final timeText = hours > 0 ? "$hours h ${minutes} min" : "$minutes min";
+  String minLabel = "min";
 
   return Container(
     padding: const EdgeInsets.only(left: 10),
@@ -296,7 +325,7 @@ Widget _buildDurationBubble(List segments) {
       ],
     ),
     child: Text(
-      timeText,
+      hours > 0 ? "$hours h $minutes $minLabel" : "$minutes $minLabel",
       style: const TextStyle(
         color: Colors.black,
         fontWeight: FontWeight.bold,

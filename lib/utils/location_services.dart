@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:location/location.dart';
 
 class LocationService {
@@ -28,8 +30,21 @@ class LocationService {
     return true;
   }
 
-  static void getRealTimeLocationData(void Function(LocationData)? onData) {
+  void getRealTimeLocationData(void Function(LocationData)? onData) {
     location.changeSettings(distanceFilter: 2);
     location.onLocationChanged.listen(onData);
+  }
+
+  Future<bool> isServiceEnabled() async {
+    return await location.serviceEnabled();
+  }
+
+  Future<LocationData?> getCurrentLocation() async {
+    try {
+      return await location.getLocation();
+    } catch (e) {
+      log("❌ Failed to get current location: $e");
+      return null;
+    }
   }
 }
