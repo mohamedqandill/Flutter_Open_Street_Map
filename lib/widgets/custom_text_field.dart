@@ -35,7 +35,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
   @override
   Widget build(BuildContext context) {
     return TextFormField(
-      style: const TextStyle(fontWeight: FontWeight.w400, fontSize: 22),
+      style: const TextStyle(fontWeight: FontWeight.w400, fontSize: 18),
       focusNode: widget.searchFocused,
       controller: widget.textEditingController,
       decoration: const InputDecoration(

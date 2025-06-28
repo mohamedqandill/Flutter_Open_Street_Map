@@ -205,24 +205,7 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
     bool isFirstTime = true;
 
     bool serviceEnabled = await locationService.isServiceEnabled();
-    if (!serviceEnabled) {
-      for (int i = 0; i < 3; i++) {
-        await Future.delayed(const Duration(seconds: 1));
-        serviceEnabled = await locationService.isServiceEnabled();
-        if (serviceEnabled) break;
-      }
-    }
-
     if (serviceEnabled) {
-      final firstLocation = await locationService.getCurrentLocation();
-      if (firstLocation != null) {
-        currentLocation =
-            LatLng(firstLocation.latitude!, firstLocation.longitude!);
-        setMyLocationMarker(currentLocation);
-        if (isFirstTime) updateMyCamera(currentLocation);
-        isFirstTime = false;
-      }
-
       locationService.getRealTimeLocationData((locationData) {
         var latLng = LatLng(locationData.latitude!, locationData.longitude!);
         currentLocation = latLng;
@@ -233,6 +216,24 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
       });
     } else {
       log(" Location service is not enabled");
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("To Use This App,Turn On GPS")));
+      Future.delayed(const Duration(seconds: 2), () async {
+        await locationService.checkAndRequestLocationService();
+        await locationService.checkAndRequestLocationService();
+        serviceEnabled = await locationService.isServiceEnabled();
+        if (serviceEnabled) {
+          locationService.getRealTimeLocationData((locationData) {
+            var latLng =
+                LatLng(locationData.latitude!, locationData.longitude!);
+            currentLocation = latLng;
+            setMyLocationMarker(latLng);
+
+            if (isFirstTime) updateMyCamera(latLng);
+            isFirstTime = false;
+          });
+        }
+      });
     }
   }
 
@@ -288,6 +289,7 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
     } catch (e) {
       setState(() {
         isLoading = false;
+        trackRoutes = [];
       });
     }
     setState(() {
@@ -324,12 +326,14 @@ Widget _buildDurationBubble(List segments) {
         ),
       ],
     ),
-    child: Text(
-      hours > 0 ? "$hours h $minutes $minLabel" : "$minutes $minLabel",
-      style: const TextStyle(
-        color: Colors.black,
-        fontWeight: FontWeight.bold,
-        fontSize: 20,
+    child: FittedBox(
+      child: Text(
+        hours > 0 ? "$hours h $minutes $minLabel" : "$minutes $minLabel",
+        style: const TextStyle(
+          color: Colors.black,
+          fontWeight: FontWeight.bold,
+          fontSize: 20,
+        ),
       ),
     ),
   );
