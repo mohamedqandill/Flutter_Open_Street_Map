@@ -201,38 +201,39 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
 
   Future<void> updateMyLocation() async {
     await locationService.checkAndRequestPermission();
-    await locationService.checkAndRequestLocationService();
+    bool serviceEnabled =
+        await locationService.checkAndRequestLocationService();
     bool isFirstTime = true;
 
-    bool serviceEnabled = await locationService.isServiceEnabled();
+    print(serviceEnabled);
     if (serviceEnabled) {
       locationService.getRealTimeLocationData((locationData) {
-        var latLng = LatLng(locationData.latitude!, locationData.longitude!);
-        currentLocation = latLng;
-        setMyLocationMarker(latLng);
+        if (locationData.latitude != null && locationData.longitude != null) {
+          final latLng =
+              LatLng(locationData.latitude!, locationData.longitude!);
+          currentLocation = latLng;
+          setMyLocationMarker(latLng);
 
-        if (isFirstTime) updateMyCamera(latLng);
-        isFirstTime = false;
+          if (isFirstTime) {
+            updateMyCamera(latLng);
+            isFirstTime = false;
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text("Unable to get location.,Please Try Again")));
+          Future.delayed(
+            const Duration(seconds: 1),
+            () {
+              return updateMyLocation();
+            },
+          );
+        }
       });
     } else {
-      log(" Location service is not enabled");
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("To Use This App,Turn On GPS")));
       Future.delayed(const Duration(seconds: 2), () async {
-        await locationService.checkAndRequestLocationService();
-        await locationService.checkAndRequestLocationService();
-        serviceEnabled = await locationService.isServiceEnabled();
-        if (serviceEnabled) {
-          locationService.getRealTimeLocationData((locationData) {
-            var latLng =
-                LatLng(locationData.latitude!, locationData.longitude!);
-            currentLocation = latLng;
-            setMyLocationMarker(latLng);
-
-            if (isFirstTime) updateMyCamera(latLng);
-            isFirstTime = false;
-          });
-        }
+        updateMyLocation();
       });
     }
   }
