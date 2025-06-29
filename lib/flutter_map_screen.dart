@@ -34,6 +34,7 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
   bool ignoreListener = false;
   bool isFocusedState = false;
   late FocusNode searchFocusState;
+  bool serviceEnabled = false;
   Marker? myLocationMarker;
 
   @override
@@ -44,11 +45,23 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
     textEditingController = TextEditingController();
     searchFocusState = FocusNode();
     getAutoCompletePlaces();
-
     mapController = MapController();
-    updateMyLocation();
-    setState(() {});
     super.initState();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    requestService().then((enabled) {
+      if (enabled == true) {
+        updateMyLocation();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("To Use This App,Turn On GPS")),
+        );
+        didChangeDependencies();
+      }
+    });
   }
 
   @override
@@ -199,43 +212,55 @@ class _FlutterMapScreenState extends State<FlutterMapScreen> {
     });
   }
 
-  Future<void> updateMyLocation() async {
+  requestService() async {
     await locationService.checkAndRequestPermission();
-    bool serviceEnabled =
-        await locationService.checkAndRequestLocationService();
+    serviceEnabled = await locationService.checkAndRequestLocationService();
+    return serviceEnabled;
+  }
+
+  Future<void> updateMyLocation() async {
     bool isFirstTime = true;
+    bool gotLocation = false;
 
-    print(serviceEnabled);
-    if (serviceEnabled) {
-      locationService.getRealTimeLocationData((locationData) {
-        if (locationData.latitude != null && locationData.longitude != null) {
-          final latLng =
-              LatLng(locationData.latitude!, locationData.longitude!);
-          currentLocation = latLng;
-          setMyLocationMarker(latLng);
-
-          if (isFirstTime) {
-            updateMyCamera(latLng);
-            isFirstTime = false;
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text("Unable to get location.,Please Try Again")));
-          Future.delayed(
-            const Duration(seconds: 1),
-            () {
-              return updateMyLocation();
-            },
-          );
-        }
-      });
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("To Use This App,Turn On GPS")));
-      Future.delayed(const Duration(seconds: 2), () async {
-        updateMyLocation();
-      });
+    if (!gotLocation) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("Getting Your Location....."),
+      ));
     }
+    Timer timeoutTimer = Timer(const Duration(seconds: 10), () {
+      if (!gotLocation) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Location request timed out. Trying again..."),
+        ));
+        updateMyLocation();
+      }
+    });
+
+    locationService.getRealTimeLocationData((locationData) {
+      if (locationData.latitude != null && locationData.longitude != null) {
+        gotLocation = true;
+        timeoutTimer.cancel();
+
+        final latLng = LatLng(locationData.latitude!, locationData.longitude!);
+        currentLocation = latLng;
+        setMyLocationMarker(latLng);
+
+        if (isFirstTime) {
+          updateMyCamera(latLng);
+          isFirstTime = false;
+        }
+      } else {
+        gotLocation = true;
+        timeoutTimer.cancel();
+
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Unable to get location. Trying again..."),
+        ));
+        Future.delayed(const Duration(seconds: 2), () {
+          updateMyLocation();
+        });
+      }
+    });
   }
 
   setMyLocationMarker(LatLng latLng) {
