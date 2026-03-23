@@ -1,50 +1,81 @@
+import 'dart:async';
 import 'dart:developer';
 
-import 'package:location/location.dart';
+import 'package:geolocator/geolocator.dart';
 
 class LocationService {
-  static Location location = Location();
-
   Future<bool> checkAndRequestLocationService() async {
-    var isServiceEnabled = await location.serviceEnabled();
+    bool isServiceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!isServiceEnabled) {
-      isServiceEnabled = await location.requestService();
-      if (!isServiceEnabled) {
-        return false;
+      await Geolocator.openLocationSettings();
+      // wait a moment for the user to enable GPS
+      try {
+        final status = await Geolocator.getServiceStatusStream().firstWhere(
+              (s) => s == ServiceStatus.enabled,
+        ).timeout(const Duration(seconds: 40));
+        return status == ServiceStatus.enabled;
+      } on TimeoutException {
+        return await Geolocator.isLocationServiceEnabled();
       }
     }
     return true;
   }
 
   Future<bool> checkAndRequestPermission() async {
-    var permissionStatue = await location.hasPermission();
-    if (permissionStatue == PermissionStatus.deniedForever) {
-      return false;
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.deniedForever) {
+      await Geolocator.openAppSettings();
+      return false; // User has to manually enable it and return
     }
-    if (permissionStatue == PermissionStatus.denied) {
-      permissionStatue = await location.requestPermission();
-      if (permissionStatue != PermissionStatus.granted) {
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission != LocationPermission.whileInUse &&
+          permission != LocationPermission.always) {
         return false;
       }
     }
     return true;
   }
 
-  void getRealTimeLocationData(void Function(LocationData)? onData) {
-    location.changeSettings(distanceFilter: 2);
-    location.onLocationChanged.listen(onData);
+  static Stream<Position> get onLocationChanged {
+    return Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 2,
+      ),
+    );
+  }
+
+  void getRealTimeLocationData(void Function(Position)? onData) {
+    onLocationChanged.listen(onData);
   }
 
   Future<bool> isServiceEnabled() async {
-    return await location.serviceEnabled();
+    return await Geolocator.isLocationServiceEnabled();
   }
 
-  Future<LocationData?> getCurrentLocation() async {
-    try {
-      return await location.getLocation();
-    } catch (e) {
-      log("❌ Failed to get current location: $e");
-      return null;
+  Future<Position?> getCurrentLocation({int retries = 3}) async {
+    for (int i = 0; i < retries; i++) {
+      try {
+        bool hasPermission = await checkAndRequestPermission();
+        bool isServiceEnabled = await checkAndRequestLocationService();
+        
+        if (!hasPermission || !isServiceEnabled) {
+          log("❌ Permission or Service denied.");
+          return null;
+        }
+
+        return await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
+        );
+      } catch (e) {
+        log("❌ Failed to get current location (Attempt \${i + 1}): \$e");
+        if (i < retries - 1) {
+          await Future.delayed(const Duration(seconds: 2));
+        }
+      }
     }
+    return null;
   }
 }

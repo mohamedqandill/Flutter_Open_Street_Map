@@ -1,14 +1,19 @@
-import 'dart:async';
-import 'dart:developer';
-
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:flutter_maps/utils/location_services.dart';
-import 'package:flutter_maps/utils/maps_services.dart';
-import 'package:flutter_maps/utils/models/PlacesAutoCompleteModel.dart';
-import 'package:flutter_maps/widgets/custom_list_view.dart';
-import 'package:flutter_maps/widgets/custom_text_field.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:flutter_maps/providers/map_provider.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+
+class CachedTileProvider extends TileProvider {
+  CachedTileProvider();
+  @override
+  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
+    return CachedNetworkImageProvider(
+      getTileUrl(coordinates, options),
+    );
+  }
+}
 
 class FlutterMapScreen extends StatefulWidget {
   const FlutterMapScreen({super.key});
@@ -18,349 +23,319 @@ class FlutterMapScreen extends StatefulWidget {
 }
 
 class _FlutterMapScreenState extends State<FlutterMapScreen> {
-  late LocationService locationService;
-  late MapController mapController;
-  late MapsApiServices mapsApiServices;
-  List<Marker> markers = [];
-  late LatLng currentLocation;
-  late SearchController searchController;
-  List<LatLng> trackRoutes = [];
-  List<Features> places = [];
-  List segments = [];
-  late TextEditingController textEditingController;
-  bool isLoading = false;
-  bool isPlacesLoading = false;
-  Timer? debounce;
-  bool ignoreListener = false;
-  bool isFocusedState = false;
-  late FocusNode searchFocusState;
-  bool serviceEnabled = false;
-  Marker? myLocationMarker;
-
   @override
   void initState() {
-    locationService = LocationService();
-    mapsApiServices = MapsApiServices();
-    searchController = SearchController();
-    textEditingController = TextEditingController();
-    searchFocusState = FocusNode();
-    getAutoCompletePlaces();
-    mapController = MapController();
     super.initState();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    requestService().then((enabled) {
-      if (enabled == true) {
-        updateMyLocation();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("To Use This App,Turn On GPS")),
-        );
-        didChangeDependencies();
-      }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<MapProvider>().requestServiceAndLocation();
     });
-  }
-
-  @override
-  void dispose() {
-    textEditingController.dispose();
-    debounce!.cancel();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     var width = MediaQuery.sizeOf(context).width;
     var height = MediaQuery.sizeOf(context).height;
-    return Scaffold(
-      body: Stack(
-        children: [
-          FlutterMap(
-            mapController: mapController,
-            options: MapOptions(
-              initialCenter:
-                  const LatLng(27.892458365561065, 26.725024118954433),
-              initialZoom: 5,
-              onTap: (tapPosition, point) => addDestinationMarker(point),
-            ),
+
+    return Consumer<MapProvider>(
+      builder: (context, mapProv, child) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFF8F9FA),
+          body: Stack(
             children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: ['a', 'b', 'c', 'd'],
-                userAgentPackageName: 'com.example.flutter_map',
-              ),
-              MarkerLayer(markers: markers),
-              if (isLoading)
-                const Center(child: CircularProgressIndicator())
-              else if (trackRoutes.isNotEmpty)
-                PolylineLayer(polylines: [
-                  Polyline(
-                    points: trackRoutes,
-                    color: Colors.blue,
-                    strokeWidth: width * 0.02,
-                  )
-                ]),
-              if (segments.isNotEmpty && trackRoutes.length >= 2)
-                Transform.translate(
-                  offset: const Offset(50, 0),
-                  child: MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: getMidPoint(trackRoutes),
-                        width: 80,
-                        height: 30,
-                        child: _buildDurationBubble(segments),
-                      ),
-                    ],
-                  ),
+              FlutterMap(
+                mapController: mapProv.mapController,
+                options: MapOptions(
+                  initialCenter: mapProv.currentLocation,
+                  initialZoom: 12,
+                  onTap: (tapPosition, point) {
+                    if (!mapProv.isRoutingMode) {
+                      mapProv.selectPointOnMap(point, isOrigin: false);
+                    } else if (mapProv.destinationFocus.hasFocus) {
+                      mapProv.selectPointOnMap(point, isOrigin: false);
+                    } else if (mapProv.originFocus.hasFocus) {
+                      mapProv.selectPointOnMap(point, isOrigin: true);
+                    }
+                  },
                 ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    subdomains: const ['a', 'b', 'c'],
+                    userAgentPackageName: 'com.example.flutter_map',
+                    tileProvider: CachedTileProvider(),
+                  ),
+                  MarkerLayer(markers: mapProv.markers),
+                  if (mapProv.trackRoutes.isNotEmpty)
+                    PolylineLayer(polylines: [
+                      Polyline(
+                        points: mapProv.trackRoutes,
+                        color: const Color(0xFF4285F4).withOpacity(0.8),
+                        strokeWidth: 6,
+                        borderColor: const Color(0xFF1967D2),
+                        borderStrokeWidth: 1,
+                      )
+                    ]),
+                ],
+              ),
+              _buildHeader(context, mapProv, width, height),
+              if (mapProv.showBottomDetails &&
+                  mapProv.segments.isNotEmpty &&
+                  mapProv.trackRoutes.length >= 2)
+                _buildBottomDetailsCard(context, mapProv, width),
+              if ((mapProv.isSearchingOrigin ||
+                      mapProv.isSearchingDestination) &&
+                  mapProv.places.isNotEmpty)
+                _buildSearchResults(context, mapProv, width, height),
+              if (mapProv.isLoading || mapProv.isPlacesLoading)
+                const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF4285F4))),
             ],
           ),
-          Positioned(
-            top: height * 0.06,
-            right: width * 0.05,
-            left: width * 0.05,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                CustomTextField(
-                  isFocused: (isFocused) {
-                    isFocusedState = isFocused;
-                    setState(() {});
-                  },
-                  searchFocused: searchFocusState,
-                  textEditingController: textEditingController,
-                ),
-                isPlacesLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : isFocusedState
-                        ? Padding(
-                            padding: EdgeInsets.only(top: height * 0.01),
-                            child: CustomListView(
-                              onRouteUpdate: (newRoutes, latLng, listenerState,
-                                  loadingState, placeSegments) {
-                                setState(() {
-                                  segments = [];
-                                  trackRoutes = newRoutes;
-                                  isLoading = loadingState;
-                                  segments = placeSegments;
-                                  markers = markers
-                                      .where((m) => m.point == currentLocation)
-                                      .toList();
-                                  markers.add(Marker(
-                                    point: latLng,
-                                    child: Icon(
-                                      Icons.location_on,
-                                      color: Colors.red,
-                                      size: width * 0.08,
-                                    ),
-                                  ));
-                                  ignoreListener = listenerState;
-                                });
-                              },
-                              places: places,
-                              mapsApiServices: mapsApiServices,
-                              currentLocation: currentLocation,
-                              textEditingController: textEditingController,
-                            ),
-                          )
-                        : const SizedBox()
-              ],
-            ),
-          )
+          floatingActionButton:
+              _buildFloatingActionButtons(context, mapProv, width),
+        );
+      },
+    );
+  }
+
+  Widget _buildHeader(
+      BuildContext context, MapProvider mapProv, double width, double height) {
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 300),
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        padding: EdgeInsets.only(
+            top: height * 0.05, left: 16, right: 16, bottom: 16),
+        decoration: BoxDecoration(
+          color: mapProv.isRoutingMode ? Colors.white : Colors.transparent,
+          boxShadow: mapProv.isRoutingMode
+              ? [
+                  const BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 10,
+                      offset: Offset(0, 4))
+                ]
+              : [],
+        ),
+        child: mapProv.isRoutingMode
+            ? _buildRoutingModeUI(context, mapProv, width)
+            : _buildSearchBar(context, mapProv, width),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar(
+      BuildContext context, MapProvider mapProv, double width) {
+    return Container(
+      height: 54,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          mapController.move(currentLocation, 8);
-        },
-        child: Icon(Icons.my_location, size: width * 0.07),
+      child: Row(
+        children: [
+          const SizedBox(width: 16),
+          const Icon(Icons.location_on, color: Color(0xFFEA4335)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: mapProv.destinationController,
+              focusNode: mapProv.destinationFocus,
+              onTap: () => mapProv.setSearchingDestination(true),
+              style: GoogleFonts.outfit(fontSize: width * 0.04),
+              decoration: InputDecoration(
+                hintText: "Search here",
+                border: InputBorder.none,
+                hintStyle: GoogleFonts.outfit(
+                    color: Colors.grey, fontSize: width * 0.04),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.directions, color: Color(0xFF4285F4)),
+            onPressed: () => mapProv.setRoutingMode(true),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
     );
   }
 
-  void getAutoCompletePlaces() {
-    textEditingController.addListener(() {
-      if (ignoreListener) return;
-      if (debounce?.isActive ?? false) debounce!.cancel();
-
-      debounce = Timer(const Duration(milliseconds: 900), () async {
-        if (textEditingController.text.isNotEmpty) {
-          setState(() {
-            isPlacesLoading = true;
-          });
-          try {
-            places =
-                await mapsApiServices.getPlaces(textEditingController.text);
-          } catch (e) {
-            setState(() {
-              isPlacesLoading = false;
-            });
-          }
-          setState(() {
-            isPlacesLoading = false;
-          });
-        } else {
-          setState(() {
-            places.clear();
-          });
-        }
-      });
-    });
-  }
-
-  requestService() async {
-    await locationService.checkAndRequestPermission();
-    serviceEnabled = await locationService.checkAndRequestLocationService();
-    return serviceEnabled;
-  }
-
-  Future<void> updateMyLocation() async {
-    bool isFirstTime = true;
-    bool gotLocation = false;
-
-    if (!gotLocation) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Getting Your Location....."),
-      ));
-    }
-    Timer timeoutTimer = Timer(const Duration(seconds: 10), () {
-      if (!gotLocation) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Location request timed out. Trying again..."),
-        ));
-        updateMyLocation();
-      }
-    });
-
-    locationService.getRealTimeLocationData((locationData) {
-      if (locationData.latitude != null && locationData.longitude != null) {
-        gotLocation = true;
-        timeoutTimer.cancel();
-
-        final latLng = LatLng(locationData.latitude!, locationData.longitude!);
-        currentLocation = latLng;
-        setMyLocationMarker(latLng);
-
-        if (isFirstTime) {
-          updateMyCamera(latLng);
-          isFirstTime = false;
-        }
-      } else {
-        gotLocation = true;
-        timeoutTimer.cancel();
-
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Unable to get location. Trying again..."),
-        ));
-        Future.delayed(const Duration(seconds: 2), () {
-          updateMyLocation();
-        });
-      }
-    });
-  }
-
-  setMyLocationMarker(LatLng latLng) {
-    var width = MediaQuery.of(context).size.width;
-
-    Marker newMarker = Marker(
-      point: latLng,
-      child: Icon(
-        Icons.my_location,
-        size: width * 0.09,
-        color: Colors.blue,
-      ),
-    );
-
-    setState(() {
-      if (myLocationMarker != null) {
-        markers.remove(myLocationMarker);
-      }
-
-      myLocationMarker = newMarker;
-      markers.add(myLocationMarker!);
-    });
-  }
-
-  updateMyCamera(LatLng latLng) {
-    mapController.move(latLng, 10);
-  }
-
-  addDestinationMarker(LatLng point) async {
-    var width = MediaQuery.of(context).size.width;
-
-    setState(() {
-      markers =
-          markers.where((marker) => marker.point == currentLocation).toList();
-
-      markers.add(Marker(
-          point: point,
-          child: Icon(
-            Icons.location_on,
-            color: Colors.red,
-            size: width * 0.09,
-          )));
-
-      isLoading = true;
-    });
-
-    try {
-      var result = await mapsApiServices.getRoute(currentLocation, point);
-      trackRoutes = result['routePoints'];
-      segments = result['segments'];
-      setState(() {});
-    } catch (e) {
-      setState(() {
-        isLoading = false;
-        trackRoutes = [];
-      });
-    }
-    setState(() {
-      log("trackroutes=>>${trackRoutes.length}");
-      isLoading = false;
-    });
-  }
-
-  LatLng getMidPoint(List<LatLng> points) {
-    final midIndex = (points.length / 2).floor();
-    return points[midIndex];
-  }
-}
-
-Widget _buildDurationBubble(List segments) {
-  if (segments.isEmpty) return const SizedBox();
-
-  final durationSeconds = segments[0]['duration'] as num;
-  final duration = Duration(seconds: durationSeconds.round());
-  final hours = duration.inHours;
-  final minutes = duration.inMinutes.remainder(60);
-  String minLabel = "min";
-
-  return Container(
-    padding: const EdgeInsets.only(left: 10),
-    decoration: BoxDecoration(
-      color: Colors.blue,
-      borderRadius: BorderRadius.circular(12),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.2),
-          blurRadius: 4,
-          offset: const Offset(0, 2),
+  Widget _buildRoutingModeUI(
+      BuildContext context, MapProvider mapProv, double width) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => mapProv.setRoutingMode(false),
+            ),
+            Text("Your Route",
+                style: GoogleFonts.outfit(
+                    fontSize: width * 0.05, fontWeight: FontWeight.bold)),
+          ],
         ),
+        _buildRoutingField(mapProv, width, mapProv.originController,
+            mapProv.originFocus, "Pick origin", true),
+        const SizedBox(height: 8),
+        _buildRoutingField(mapProv, width, mapProv.destinationController,
+            mapProv.destinationFocus, "Search destination", false),
       ],
-    ),
-    child: FittedBox(
-      child: Text(
-        hours > 0 ? "$hours h $minutes $minLabel" : "$minutes $minLabel",
-        style: const TextStyle(
-          color: Colors.black,
-          fontWeight: FontWeight.bold,
-          fontSize: 20,
+    );
+  }
+
+  Widget _buildRoutingField(MapProvider mapProv, double width,
+      TextEditingController ctrl, FocusNode fn, String hint, bool isOrigin) {
+    return Container(
+      decoration: BoxDecoration(
+          color: const Color(0xFFF1F3F4),
+          borderRadius: BorderRadius.circular(12)),
+      child: TextField(
+        controller: ctrl,
+        focusNode: fn,
+        onTap: () => isOrigin
+            ? mapProv.setSearchingOrigin(true)
+            : mapProv.setSearchingDestination(true),
+        decoration: InputDecoration(
+          hintText: hint,
+          prefixIcon: Icon(isOrigin ? Icons.my_location : Icons.location_on,
+              color:
+                  isOrigin ? const Color(0xFF4285F4) : const Color(0xFFEA4335)),
+          border: InputBorder.none,
         ),
       ),
-    ),
-  );
+    );
+  }
+
+  Widget _buildSearchResults(
+      BuildContext context, MapProvider mapProv, double width, double height) {
+    return Positioned(
+      top: mapProv.isRoutingMode ? 220 : 110,
+      left: 16,
+      right: 16,
+      child: Container(
+        constraints: BoxConstraints(maxHeight: height * 0.4),
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(color: Colors.black12, blurRadius: 10)
+            ]),
+        child: ListView.separated(
+          shrinkWrap: true,
+          itemCount: mapProv.places.length,
+          separatorBuilder: (c, i) => const Divider(height: 1),
+          itemBuilder: (c, i) {
+            final place = mapProv.places[i];
+            return ListTile(
+              title: Text(place.properties?.name ?? ""),
+              subtitle: Text(place.properties?.label ?? ""),
+              onTap: () => mapProv.onPlaceSelected(place),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomDetailsCard(
+      BuildContext context, MapProvider mapProv, double width) {
+    final durationSecs = mapProv.segments[0]['duration'] as num;
+    final distanceMeters = mapProv.segments[0]['distance'] as num;
+    final minutes = (durationSecs / 60).round();
+    final distanceKm = (distanceMeters / 1000).toStringAsFixed(1);
+
+    return Positioned(
+      bottom: 24,
+      left: 16,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8))
+            ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Text("$minutes min",
+                    style: GoogleFonts.outfit(
+                        fontSize: width * 0.06,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF1E8E3E))),
+                const SizedBox(width: 8),
+                Text("($distanceKm km)",
+                    style: GoogleFonts.outfit(
+                        fontSize: width * 0.045, color: Colors.grey)),
+                const Spacer(),
+                IconButton(
+                    icon: const Icon(Icons.close, color: Colors.red),
+                    onPressed: () => setState(() {
+                          mapProv.showBottomDetails = false;
+                        })),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text("Fastest route now based on traffic",
+                  style: GoogleFonts.outfit(
+                      color: Colors.grey, fontSize: width * 0.035)),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () => setState(() {
+                mapProv.showBottomDetails = false;
+              }),
+              icon: const Icon(Icons.navigation_outlined, color: Colors.white),
+              label: const Text("Start",
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4285F4),
+                minimumSize: const Size(double.infinity, 54),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingActionButtons(
+      BuildContext context, MapProvider mapProv, double width) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FloatingActionButton.small(
+          onPressed: () => mapProv.clearAll(),
+          backgroundColor: Colors.white,
+          child: const Icon(Icons.layers_clear, color: Colors.red),
+        ),
+        const SizedBox(height: 12),
+        FloatingActionButton(
+          onPressed: () => mapProv.updateMyLocation(),
+          backgroundColor: Colors.white,
+          child: const Icon(Icons.my_location, color: Color(0xFF4285F4)),
+        ),
+        const SizedBox(height: 100),
+      ],
+    );
+  }
 }

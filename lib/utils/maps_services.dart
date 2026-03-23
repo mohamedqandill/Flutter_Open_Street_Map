@@ -107,4 +107,48 @@ class MapsApiServices {
       rethrow;
     }
   }
+
+  Future<String> getPlaceName(LatLng latLng) async {
+    try {
+      var response = await dio.get(
+          "https://api.openrouteservice.org/geocode/reverse?api_key=$apiKey&point.lon=${latLng.longitude}&point.lat=${latLng.latitude}&size=1");
+      if (response.statusCode == 200) {
+        var data = response.data;
+        final features = data['features'] as List;
+        if (features.isNotEmpty) {
+          final props = features[0]['properties'];
+          
+          String? name = props['name'];
+          String? street = props['street'];
+          String? locality = props['locality'] ?? props['region'] ?? props['county'];
+
+          List<String> parts = [];
+          if (name != null) {
+            // Treat house numbers as part of the street like Google
+            if (double.tryParse(name) != null && street != null) {
+              parts.add("$name $street");
+            } else {
+              parts.add(name);
+            }
+          } else if (street != null) {
+            parts.add(street);
+          }
+          
+          if (locality != null && (parts.isEmpty || parts[0] != locality)) {
+            parts.add(locality);
+          }
+
+          if (parts.isNotEmpty) {
+             return parts.join(', ');
+          }
+
+          return props['label'] ?? "Selected Location";
+        }
+      }
+      return "Selected Location";
+    } catch (e) {
+      log("Reverse geocode error: $e");
+      return "Selected Location";
+    }
+  }
 }

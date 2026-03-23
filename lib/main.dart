@@ -1,16 +1,18 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
-import 'package:path_provider/path_provider.dart';
-
-import 'flutter_map_screen.dart';
+import 'package:flutter_maps/flutter_map_screen.dart';
+import 'package:flutter_maps/providers/map_provider.dart';
+import 'package:provider/provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final Directory appDocumentsDir = await getApplicationDocumentsDirectory();
-  Hive.init(appDocumentsDir.path);
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => MapProvider()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
